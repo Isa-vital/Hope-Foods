@@ -5,17 +5,31 @@ import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 
-const MenuItem = ({ item }) => {
+const MenuItem = ({ item, onClick }) => {
   const { addToCart } = useCart();
 
-  const handleAddToCart = () => {
+  const handleClick = (e) => {
+    // If onClick is provided (for opening details), use it
+    // Otherwise, add directly to cart
+    if (onClick) {
+      onClick(item);
+    } else {
+      e.stopPropagation();
+      addToCart(item);
+    }
+  };
+
+  const handleQuickAdd = (e) => {
+    e.stopPropagation();
     addToCart(item);
   };
 
   return (
     <motion.div
       whileHover={{ y: -5 }}
-      className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-stone-100 flex flex-col h-full group"
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick ? () => onClick(item) : undefined}
+      className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-stone-100 flex flex-col h-full group cursor-pointer"
     >
       <div className="relative h-48 overflow-hidden bg-stone-200">
         {item.image ? (
@@ -38,12 +52,12 @@ const MenuItem = ({ item }) => {
         <h3 className="text-xl font-serif font-bold text-stone-900 mb-2 group-hover:text-orange-600 transition-colors">
           {item.name}
         </h3>
-        <p className="text-stone-600 text-sm leading-relaxed mb-6 flex-grow">
+        <p className="text-stone-600 text-sm leading-relaxed mb-6 flex-grow line-clamp-2">
           {item.description}
         </p>
         
         <Button 
-          onClick={handleAddToCart}
+          onClick={handleQuickAdd}
           className="w-full bg-stone-900 hover:bg-orange-600 text-white rounded-xl transition-colors group/btn"
         >
           Add to Cart <Plus className="ml-2 h-4 w-4 group-hover/btn:rotate-90 transition-transform" />
