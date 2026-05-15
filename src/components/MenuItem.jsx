@@ -1,12 +1,18 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import { Plus, Minus, ShoppingBag } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 
 const MenuItem = ({ item, onClick }) => {
-  const { addToCart } = useCart();
+  const { addToCart, cart, updateQuantity } = useCart();
+  const navigate = useNavigate();
+
+  // Find if item is already in cart
+  const cartItem = cart.find((cartItem) => cartItem.id === item.id);
+  const isInCart = !!cartItem;
 
   const handleClick = (e) => {
     // If onClick is provided (for opening details), use it
@@ -22,6 +28,30 @@ const MenuItem = ({ item, onClick }) => {
   const handleQuickAdd = (e) => {
     e.stopPropagation();
     addToCart(item);
+  };
+
+  const handleBuyNow = (e) => {
+    e.stopPropagation();
+    // Add to cart if not already there
+    if (!isInCart) {
+      addToCart(item);
+    }
+    // Navigate to checkout
+    navigate('/checkout');
+  };
+
+  const handleIncrease = (e) => {
+    e.stopPropagation();
+    if (cartItem) {
+      updateQuantity(item.id, cartItem.quantity + 1);
+    }
+  };
+
+  const handleDecrease = (e) => {
+    e.stopPropagation();
+    if (cartItem) {
+      updateQuantity(item.id, cartItem.quantity - 1);
+    }
   };
 
   return (
@@ -56,12 +86,44 @@ const MenuItem = ({ item, onClick }) => {
           {item.description}
         </p>
         
-        <Button 
-          onClick={handleQuickAdd}
-          className="w-full bg-stone-900 hover:bg-orange-600 text-white rounded-xl transition-colors group/btn"
-        >
-          Add to Cart <Plus className="ml-2 h-4 w-4 group-hover/btn:rotate-90 transition-transform" />
-        </Button>
+        {!isInCart ? (
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleQuickAdd}
+              className="flex-1 bg-stone-900 hover:bg-stone-800 text-white rounded-none transition-colors group/btn"
+            >
+              Add to Cart <Plus className="ml-2 h-4 w-4 group-hover/btn:rotate-90 transition-transform" />
+            </Button>
+            <Button 
+              onClick={handleBuyNow}
+              className="flex-1 bg-orange-600 hover:bg-orange-700 text-white rounded-none transition-colors group/btn"
+            >
+              Buy Now <ShoppingBag className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between bg-stone-100 rounded-none p-2">
+            <Button 
+              onClick={handleDecrease}
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-none hover:bg-stone-200 transition-colors"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="font-bold text-lg text-stone-900 min-w-[2rem] text-center">
+              {cartItem.quantity}
+            </span>
+            <Button 
+              onClick={handleIncrease}
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-none hover:bg-stone-200 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </motion.div>
   );
