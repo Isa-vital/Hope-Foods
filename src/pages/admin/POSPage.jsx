@@ -4,10 +4,14 @@ import { Plus, Minus, Trash2, Search, ShoppingCart, CreditCard, X } from 'lucide
 import { menuApi, tablesApi, ordersApi, paymentsApi, formatUGX } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import Swal from 'sweetalert2';
+import Receipt from '@/components/Receipt';
+import { useAuth } from '@/context/AuthContext';
 
 const POSPage = () => {
+  const { user } = useAuth();
   const [menu, setMenu] = useState({});
   const [tables, setTables] = useState([]);
+  const [receipt, setReceipt] = useState(null);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState(null);
   const [cart, setCart] = useState([]);
@@ -87,17 +91,48 @@ const POSPage = () => {
         payment_method: method
       });
       await ordersApi.updateStatus(paymentModal.order.id, 'completed');
-      Swal.fire({
+
+      // Build receipt snapshot from local state (no extra API call needed)
+      const tbl = tables.find((t) => String(t.id) === String(tableId));
+      const receiptOrder = {
+        order_number: paymentModal.order.order_number,
+        created_at: new Date().toISOString(),
+        order_type: orderType,
+        table_number: tbl ? tbl.table_number : null,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        cashier_name: user?.full_name || user?.email || 'Cashier',
+        payment_method: method,
+        items: cart.map((i) => ({
+          item_name: i.name,
+          quantity: i.quantity,
+          unit_price: i.priceNumber,
+          subtotal: i.priceNumber * i.quantity
+        })),
+        subtotal: paymentModal.amount,
+        tax: 0,
+        total: paymentModal.amount
+      };
+
+      const res = await Swal.fire({
         icon: 'success',
         title: 'Sale complete!',
         html: `<p><strong>${paymentModal.order.order_number}</strong></p><p>${formatUGX(paymentModal.amount)} via ${method}</p>`,
-        confirmButtonColor: '#ea580c'
+        confirmButtonColor: '#ea580c',
+        confirmButtonText: 'Print Receipt',
+        showCancelButton: true,
+        cancelButtonText: 'Skip'
       });
+
       setCart([]);
       setTableId('');
       setCustomerName('Walk-in');
       setCustomerPhone('');
       setPaymentModal(null);
+
+      if (res.isConfirmed) {
+        setReceipt(receiptOrder);
+      }
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'Payment failed', text: err.message });
     }
@@ -240,6 +275,10 @@ const POSPage = () => {
             <p className="text-center text-xs text-stone-500 mt-4">Order is created. Choose payment method to complete the sale.</p>
           </motion.div>
         </div>
+      )}
+
+      {receipt && (
+        <Receipt order={receipt} onClose={() => setReceipt(null)} autoPrint />
       )}
     </div>
   );

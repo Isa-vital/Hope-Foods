@@ -27,12 +27,10 @@ export const createOrder = asyncHandler(async (req, res) => {
   } = req.body;
 
   if (!items.length) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Order must contain at least one item",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Order must contain at least one item",
+    });
   }
 
   const conn = await pool.getConnection();
@@ -148,7 +146,7 @@ export const listOrders = asyncHandler(async (req, res) => {
     t.table_number,
     (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) AS item_count
     FROM orders o
-    LEFT JOIN tables t ON t.id = o.table_id
+    LEFT JOIN restaurant_tables t ON t.id = o.table_id
     WHERE 1=1`;
   const params = [];
 

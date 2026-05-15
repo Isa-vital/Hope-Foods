@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw, Printer } from 'lucide-react';
 import { ordersApi, formatUGX } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import Swal from 'sweetalert2';
+import Receipt from '@/components/Receipt';
 
 const STATUS_OPTIONS = ['pending', 'confirmed', 'preparing', 'ready', 'served', 'delivered', 'completed', 'cancelled'];
 
@@ -23,6 +24,7 @@ const AdminOrdersPage = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [receipt, setReceipt] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,6 +62,15 @@ const AdminOrdersPage = () => {
       } catch {
         // ignore
       }
+    }
+  };
+
+  const handlePrint = async (order) => {
+    try {
+      const res = await ordersApi.get(order.id);
+      setReceipt(res.data);
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Could not load order', text: err.message });
     }
   };
 
@@ -117,6 +128,9 @@ const AdminOrdersPage = () => {
                   >
                     {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
+                  <button onClick={() => handlePrint(order)} title="Print receipt" className="p-2 hover:bg-orange-50 text-orange-600 rounded-lg">
+                    <Printer size={16} />
+                  </button>
                   <button onClick={() => toggleExpand(order)} className="p-2 hover:bg-stone-100 rounded-lg">
                     <ChevronDown size={18} className={`transition-transform ${expandedId === order.id ? 'rotate-180' : ''}`} />
                   </button>
@@ -145,6 +159,8 @@ const AdminOrdersPage = () => {
           ))}
         </div>
       )}
+
+      {receipt && <Receipt order={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 };

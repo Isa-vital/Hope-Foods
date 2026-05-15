@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingCart, Users, LogOut,
-  TrendingUp, Clock, CheckCircle, DollarSign, CalendarDays, Grid3x3, CreditCard,
-  BedDouble, Hotel, ChefHat, Package, BarChart3, Wallet, History, UserCog
+  TrendingUp, TrendingDown, Clock, CheckCircle, DollarSign, CalendarDays, Grid3x3, CreditCard,
+  BedDouble, Hotel, ChefHat, Package, BarChart3, Wallet, History, UserCog, AlertTriangle, Activity
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { ordersApi, formatUGX } from '@/lib/api';
+import { ordersApi, reportsApi, formatUGX } from '@/lib/api';
 import AdminMenuPage from './AdminMenuPage';
 import AdminOrdersPage from './AdminOrdersPage';
 import AdminReservationsPage from './AdminReservationsPage';
@@ -21,63 +22,312 @@ import AdminShiftsPage from './AdminShiftsPage';
 import AdminActivityLogPage from './AdminActivityLogPage';
 import AdminUsersPage from './AdminUsersPage';
 
-const StatCard = ({ icon: Icon, label, value, color = 'orange' }) => (
-  <div className="bg-white rounded-2xl p-6 shadow-md flex items-center gap-4">
-    <div className={`w-14 h-14 rounded-xl bg-${color}-100 text-${color}-600 flex items-center justify-center`}>
-      <Icon size={26} />
+const COLOR_MAP = {
+  orange: 'bg-orange-100 text-orange-600',
+  blue: 'bg-blue-100 text-blue-600',
+  green: 'bg-emerald-100 text-emerald-600',
+  yellow: 'bg-yellow-100 text-yellow-600',
+  indigo: 'bg-indigo-100 text-indigo-600',
+  red: 'bg-red-100 text-red-600',
+  purple: 'bg-purple-100 text-purple-600',
+  teal: 'bg-teal-100 text-teal-600'
+};
+
+const StatCard = ({ icon: Icon, label, value, sub, trend, color = 'orange' }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition flex items-start gap-4"
+  >
+    <div className={`w-12 h-12 rounded-xl ${COLOR_MAP[color]} flex items-center justify-center shrink-0`}>
+      <Icon size={24} />
     </div>
-    <div>
-      <p className="text-sm text-stone-500">{label}</p>
-      <p className="text-2xl font-bold text-stone-900">{value}</p>
+    <div className="flex-1 min-w-0">
+      <p className="text-xs text-stone-500 uppercase tracking-wide font-semibold">{label}</p>
+      <p className="text-2xl font-bold text-stone-900 leading-tight mt-0.5 truncate">{value}</p>
+      {sub && <p className="text-xs text-stone-500 mt-0.5">{sub}</p>}
+      {trend !== undefined && trend !== null && (
+        <div className={`flex items-center gap-1 mt-1 text-xs font-semibold ${trend >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+          {trend >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+          {Math.abs(trend).toFixed(1)}% vs yesterday
+        </div>
+      )}
     </div>
-  </div>
+  </motion.div>
 );
 
+// Inline bar chart (no external chart lib)
+const SalesBarChart = ({ data }) => {
+  if (!data || data.length === 0) {
+    return <p className="text-center text-stone-400 py-12 text-sm">No sales data for the last 7 days.</p>;
+  }
+  const max = Math.max(...data.map((d) => Number(d.revenue) || 0), 1);
+  return (
+    <div className="flex items-end gap-2 h-48 px-2">
+      {data.map((d, i) => {
+        const rev = Number(d.revenue) || 0;
+        const heightPct = (rev / max) * 100;
+        const dateLabel = new Date(d.date).toLocaleDateString('en-UG', { weekday: 'short' });
+        return (
+          <div key={d.date || i} className="flex-1 flex flex-col items-center gap-1 group">
+            <span className="text-[10px] font-semibold text-stone-700 opacity-0 group-hover:opacity-100 transition">
+              {formatUGX(rev)}
+            </span>
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: `${Math.max(heightPct, 2)}%` }}
+              transition={{ duration: 0.5, delay: i * 0.05 }}
+              className="w-full bg-gradient-to-t from-orange-600 to-orange-400 rounded-t-md hover:from-orange-700 hover:to-orange-500 cursor-pointer"
+              title={`${dateLabel}: ${formatUGX(rev)} · ${d.orders} orders`}
+            />
+            <span className="text-[11px] text-stone-600 font-medium">{dateLabel}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const TopItemsChart = ({ items }) => {
+  if (!items || items.length === 0) {
+    return <p className="text-center text-stone-400 py-12 text-sm">No item sales yet this week.</p>;
+  }
+  const max = Math.max(...items.map((i) => Number(i.qty_sold) || 0), 1);
+  return (
+    <div className="space-y-3">
+      {items.map((it, idx) => {
+        const qty = Number(it.qty_sold) || 0;
+        const widthPct = (qty / max) * 100;
+        return (
+          <div key={it.id || idx}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="font-semibold text-stone-700 truncate pr-2">{idx + 1}. {it.name}</span>
+              <span className="text-stone-500 shrink-0">{qty} · {formatUGX(it.revenue)}</span>
+            </div>
+            <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${widthPct}%` }}
+                transition={{ duration: 0.6, delay: idx * 0.05 }}
+                className="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full"
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const PaymentMethodsChart = ({ data }) => {
+  if (!data || data.length === 0) {
+    return <p className="text-center text-stone-400 py-8 text-sm">No payments recorded yet.</p>;
+  }
+  const total = data.reduce((s, d) => s + Number(d.total || 0), 0) || 1;
+  const colors = ['bg-orange-500', 'bg-emerald-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500'];
+  return (
+    <div className="space-y-3">
+      {data.map((d, idx) => {
+        const amt = Number(d.total) || 0;
+        const pct = (amt / total) * 100;
+        return (
+          <div key={d.payment_method || idx}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="font-semibold text-stone-700 capitalize">
+                {(d.payment_method || 'unknown').replace('_', ' ')}
+              </span>
+              <span className="text-stone-500">{formatUGX(amt)} ({pct.toFixed(0)}%)</span>
+            </div>
+            <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.6, delay: idx * 0.05 }}
+                className={`h-full ${colors[idx % colors.length]} rounded-full`}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const formatDate = (d) => d.toISOString().slice(0, 10);
+
 const Dashboard = () => {
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState(null);
+  const [sales, setSales] = useState([]);
+  const [topItems, setTopItems] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [todayStats, setTodayStats] = useState(null);
+  const [yesterdayRevenue, setYesterdayRevenue] = useState(0);
 
   useEffect(() => {
-    ordersApi.todayStats()
-      .then((res) => setStats(res.data))
-      .finally(() => setLoading(false));
+    const today = new Date();
+    const sevenAgo = new Date(today); sevenAgo.setDate(today.getDate() - 6);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const from = formatDate(sevenAgo);
+    const to = formatDate(today);
+
+    Promise.allSettled([
+      reportsApi.dashboard(),
+      reportsApi.sales(from, to),
+      reportsApi.topItems(from, to, 5),
+      reportsApi.paymentMethods(from, to),
+      ordersApi.todayStats()
+    ]).then(([dashRes, salesRes, topRes, payRes, todayRes]) => {
+      if (dashRes.status === 'fulfilled') setOverview(dashRes.value.data);
+      if (todayRes.status === 'fulfilled') setTodayStats(todayRes.value.data);
+
+      if (salesRes.status === 'fulfilled') {
+        const breakdown = salesRes.value.data?.breakdown || [];
+        // Pad missing days so chart always shows 7 bars
+        const map = {};
+        for (const row of breakdown) {
+          const key = formatDate(new Date(row.date));
+          map[key] = row;
+        }
+        const filled = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(today); d.setDate(today.getDate() - i);
+          const key = formatDate(d);
+          filled.push(map[key] || { date: key, orders: 0, revenue: 0 });
+        }
+        setSales(filled);
+
+        const yKey = formatDate(yesterday);
+        const yRow = map[yKey];
+        setYesterdayRevenue(yRow ? Number(yRow.revenue) || 0 : 0);
+      }
+
+      if (topRes.status === 'fulfilled') setTopItems(topRes.value.data || []);
+      if (payRes.status === 'fulfilled') setPayments(payRes.value.data || []);
+    }).finally(() => setLoading(false));
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-600 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  const today = overview?.today || { orders: 0, revenue: 0 };
+  const week = overview?.week || { orders: 0, revenue: 0 };
+  const month = overview?.month || { orders: 0, revenue: 0 };
+  const todayRevenue = Number(today.revenue) || 0;
+  const revenueTrend = yesterdayRevenue > 0
+    ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+    : (todayRevenue > 0 ? 100 : null);
 
   return (
     <div>
-      <h1 className="text-3xl font-serif font-bold text-stone-900 mb-2">Dashboard</h1>
-      <p className="text-stone-600 mb-8">Today's overview · {new Date().toLocaleDateString()}</p>
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-10 w-10 border-4 border-orange-600 border-t-transparent"></div>
+      <div className="flex items-end justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <h1 className="text-3xl font-serif font-bold text-stone-900">Dashboard</h1>
+          <p className="text-stone-600 text-sm">
+            {new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
         </div>
-      ) : stats ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={ShoppingCart} label="Total Orders" value={stats.total_orders} color="blue" />
-          <StatCard icon={DollarSign} label="Total Sales" value={formatUGX(stats.total_sales)} color="green" />
-          <StatCard icon={Clock} label="Pending" value={stats.pending_orders} color="yellow" />
-          <StatCard icon={CheckCircle} label="Preparing" value={stats.preparing_orders} color="indigo" />
-        </div>
-      ) : (
-        <p className="text-stone-500">No data available.</p>
-      )}
+        {overview?.low_stock_count > 0 && (
+          <Link to="/admin/inventory" className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-2 rounded-xl hover:bg-red-100 transition">
+            <AlertTriangle size={18} />
+            <span className="text-sm font-semibold">{overview.low_stock_count} item(s) low on stock</span>
+          </Link>
+        )}
+      </div>
 
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link to="/admin/orders" className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition flex items-center gap-4">
-          <ShoppingCart className="text-orange-600" size={32} />
-          <div>
-            <h3 className="font-bold text-stone-900">Manage Orders</h3>
-            <p className="text-sm text-stone-600">Update status, view kitchen queue</p>
+      {/* Top stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard icon={DollarSign} color="green" label="Today's Revenue"
+          value={formatUGX(todayRevenue)} sub={`${today.orders} order(s)`} trend={revenueTrend} />
+        <StatCard icon={Clock} color="yellow" label="Pending Now"
+          value={todayStats?.pending_orders ?? 0} sub={`${todayStats?.preparing_orders ?? 0} preparing`} />
+        <StatCard icon={TrendingUp} color="blue" label="Last 7 Days"
+          value={formatUGX(week.revenue)} sub={`${week.orders} order(s)`} />
+        <StatCard icon={Hotel} color="purple" label="Active Bookings"
+          value={overview?.active_bookings ?? 0} sub="Confirmed + checked-in" />
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-md p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-stone-900 flex items-center gap-2">
+              <BarChart3 size={20} className="text-orange-600" />
+              Revenue · Last 7 Days
+            </h2>
+            <Link to="/admin/reports" className="text-xs text-orange-600 hover:underline font-semibold">
+              Full reports →
+            </Link>
           </div>
-        </Link>
-        <Link to="/admin/menu" className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition flex items-center gap-4">
-          <UtensilsCrossed className="text-orange-600" size={32} />
-          <div>
-            <h3 className="font-bold text-stone-900">Manage Menu</h3>
-            <p className="text-sm text-stone-600">Add, edit, or disable items</p>
+          <SalesBarChart data={sales} />
+          <div className="mt-3 pt-3 border-t border-stone-100 grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-xs text-stone-500">Week Total</p>
+              <p className="font-bold text-stone-900">{formatUGX(week.revenue)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">Avg / day</p>
+              <p className="font-bold text-stone-900">{formatUGX(Number(week.revenue) / 7)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">30-day total</p>
+              <p className="font-bold text-stone-900">{formatUGX(month.revenue)}</p>
+            </div>
           </div>
-        </Link>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-md p-5">
+          <h2 className="text-lg font-bold text-stone-900 flex items-center gap-2 mb-4">
+            <CreditCard size={20} className="text-emerald-600" />
+            Payment Mix (7d)
+          </h2>
+          <PaymentMethodsChart data={payments} />
+        </div>
+      </div>
+
+      {/* Top items + quick actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-md p-5">
+          <h2 className="text-lg font-bold text-stone-900 flex items-center gap-2 mb-4">
+            <UtensilsCrossed size={20} className="text-orange-600" />
+            Top 5 Menu Items (7d)
+          </h2>
+          <TopItemsChart items={topItems} />
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-md p-5">
+          <h2 className="text-lg font-bold text-stone-900 flex items-center gap-2 mb-4">
+            <Activity size={20} className="text-blue-600" />
+            Quick Actions
+          </h2>
+          <div className="space-y-2">
+            <Link to="/admin/pos" className="flex items-center gap-3 p-3 rounded-xl bg-orange-50 hover:bg-orange-100 transition">
+              <CreditCard className="text-orange-600" size={20} />
+              <span className="font-semibold text-stone-800">Open POS</span>
+            </Link>
+            <Link to="/admin/kitchen" className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition">
+              <ChefHat className="text-indigo-600" size={20} />
+              <span className="font-semibold text-stone-800">Kitchen Display</span>
+            </Link>
+            <Link to="/admin/orders" className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 transition">
+              <ShoppingCart className="text-amber-700" size={20} />
+              <span className="font-semibold text-stone-800">Manage Orders</span>
+            </Link>
+            <Link to="/admin/shifts" className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition">
+              <Wallet className="text-emerald-600" size={20} />
+              <span className="font-semibold text-stone-800">Cash Shifts</span>
+            </Link>
+            <Link to="/admin/inventory" className="flex items-center gap-3 p-3 rounded-xl bg-red-50 hover:bg-red-100 transition">
+              <Package className="text-red-600" size={20} />
+              <span className="font-semibold text-stone-800">Inventory</span>
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );
