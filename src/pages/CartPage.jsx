@@ -112,7 +112,9 @@ const CartPage = () => {
             {/* Cart Items */}
             <div className="lg:col-span-2 space-y-4">
               {cart.map((item) => {
-                const itemPrice = parseInt(item.price.replace(/[^0-9]/g, ''));
+                const itemPrice = typeof item.priceNumber === 'number'
+                  ? item.priceNumber
+                  : parseInt(String(item.price).replace(/[^0-9]/g, ''), 10) || 0;
                 const itemTotal = itemPrice * item.quantity;
 
                 return (

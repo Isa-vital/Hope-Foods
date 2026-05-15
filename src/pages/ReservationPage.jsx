@@ -3,26 +3,28 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar as CalendarIcon, Users, Clock, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { reservationsApi } from '@/lib/api';
 import Swal from 'sweetalert2';
 
 const ReservationPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    email: '',
     date: '',
     time: '',
     guests: '2',
     specialRequests: ''
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Basic validation
+
     if (!formData.name || !formData.phone || !formData.date || !formData.time) {
       Swal.fire({
         icon: 'error',
@@ -33,13 +35,37 @@ const ReservationPage = () => {
       return;
     }
 
-    Swal.fire({
-      icon: 'success',
-      title: 'Reservation Confirmed!',
-      html: `We look forward to seeing you on <strong>${formData.date}</strong> at <strong>${formData.time}</strong>.`,
-      confirmButtonColor: '#ea580c'
-    });
-    setFormData({ name: '', phone: '', date: '', time: '', guests: '2', specialRequests: '' });
+    setSubmitting(true);
+    try {
+      const res = await reservationsApi.create({
+        customer_name: formData.name,
+        customer_phone: formData.phone,
+        customer_email: formData.email || undefined,
+        reservation_date: formData.date,
+        reservation_time: formData.time,
+        party_size: Number(formData.guests),
+        special_requests: formData.specialRequests || undefined
+      });
+      const r = res.data;
+      await Swal.fire({
+        icon: 'success',
+        title: 'Reservation Received!',
+        html: `<p>Thank you, <strong>${r.customer_name}</strong>.</p>
+               <p class="mt-2">We'll confirm your booking for <strong>${r.reservation_date}</strong> at <strong>${r.reservation_time}</strong> shortly.</p>
+               <p class="text-sm text-stone-500 mt-3">Reference: ${r.uuid.slice(0, 8).toUpperCase()}</p>`,
+        confirmButtonColor: '#ea580c'
+      });
+      setFormData({ name: '', phone: '', email: '', date: '', time: '', guests: '2', specialRequests: '' });
+    } catch (err) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Booking failed',
+        text: err.message || 'Please try again.',
+        confirmButtonColor: '#ea580c'
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -148,8 +174,8 @@ const ReservationPage = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 rounded-xl text-lg font-bold shadow-lg shadow-orange-600/30">
-              Confirm Reservation <CheckCircle className="ml-2" />
+            <Button type="submit" disabled={submitting} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 rounded-xl text-lg font-bold shadow-lg shadow-orange-600/30 disabled:opacity-50">
+              {submitting ? 'Submitting...' : (<>Confirm Reservation <CheckCircle className="ml-2" /></>)}
             </Button>
           </form>
         </motion.div>

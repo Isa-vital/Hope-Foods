@@ -87,7 +87,10 @@ export const CartProvider = ({ children }) => {
 
   const getCartTotal = () => {
     return cart.reduce((total, item) => {
-      const price = parseInt(item.price.replace(/[^0-9]/g, ''));
+      // Support both numeric (priceNumber from API) and string ("UGX 25,000") prices
+      const price = typeof item.priceNumber === 'number'
+        ? item.priceNumber
+        : parseInt(String(item.price).replace(/[^0-9]/g, ''), 10) || 0;
       return total + price * item.quantity;
     }, 0);
   };

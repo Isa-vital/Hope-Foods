@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
+import { ordersApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { MapPin, Phone, User, CreditCard, Clock, Check } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const CheckoutPage = () => {
   const { cart, getCartTotal, getCartCount, clearCart } = useCart();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -19,6 +22,18 @@ const CheckoutPage = () => {
     paymentMethod: 'cash',
     notes: ''
   });
+
+  // Pre-fill from logged-in user
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        fullName: prev.fullName || user.full_name || '',
+        phone: prev.phone || user.phone || '',
+        email: prev.email || user.email || ''
+      }));
+    }
+  }, [user]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -72,36 +87,45 @@ const CheckoutPage = () => {
 
     setIsSubmitting(true);
 
-    // Simulate order processing
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const paymentMap = { cash: 'cash', mobile: 'mobile_money', card: 'card' };
 
-    setIsSubmitting(false);
+    const payload = {
+      customer_name: formData.fullName,
+      customer_phone: formData.phone,
+      customer_email: formData.email || undefined,
+      delivery_address: formData.address,
+      order_type: 'delivery',
+      payment_method: paymentMap[formData.paymentMethod] || 'cash',
+      notes: formData.notes || undefined,
+      items: cart.map((item) => ({
+        menu_item_id: item.id,
+        quantity: item.quantity,
+        notes: item.notes || undefined
+      }))
+    };
 
-    // Show success message
-    const result = await Swal.fire({
-      icon: 'success',
-      title: 'Order Placed Successfully!',
-      html: `
-        <div class="text-left">
-          <p class="mb-4">Thank you, <strong>${formData.fullName}</strong>!</p>
-          <p class="mb-2">Your order has been confirmed and will be prepared shortly.</p>
-          <div class="bg-orange-50 p-4 rounded-lg mt-4">
-            <p class="text-sm"><strong>Order ID:</strong> #HF${Date.now().toString().slice(-6)}</p>
-            <p class="text-sm"><strong>Delivery to:</strong> ${formData.address}</p>
-            <p class="text-sm"><strong>Phone:</strong> ${formData.phone}</p>
-            <p class="text-sm"><strong>Total:</strong> UGX ${formatPrice(getCartTotal())}</p>
-          </div>
-          <p class="mt-4 text-sm text-stone-600">We'll call you to confirm your order shortly.</p>
-        </div>
-      `,
-      confirmButtonText: 'Done',
-      confirmButtonColor: '#ea580c',
-      allowOutsideClick: false
-    });
-
-    if (result.isConfirmed) {
+    try {
+      const res = await ordersApi.create(payload);
+      const order = res.data;
       clearCart();
-      navigate('/');
+      await Swal.fire({
+        icon: 'success',
+        title: 'Order Placed!',
+        html: `<p>Your order <strong>${order.order_number}</strong> has been received.</p><p class="mt-2 text-sm text-stone-600">We'll call ${formData.phone} shortly.</p>`,
+        confirmButtonText: 'View Order',
+        confirmButtonColor: '#ea580c',
+        allowOutsideClick: false
+      });
+      navigate(`/order/${order.id}`);
+    } catch (err) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Order failed',
+        text: err.message || 'Could not place order. Please try again.',
+        confirmButtonColor: '#ea580c'
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -300,16 +324,21 @@ const CheckoutPage = () => {
                   <h3 className="text-2xl font-bold text-stone-900 mb-6">Order Summary</h3>
 
                   <div className="space-y-3 mb-6">
-                    {cart.map((item) => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span className="text-stone-600">
-                          {item.quantity}x {item.name}
-                        </span>
-                        <span className="font-medium text-stone-900">
-                          UGX {formatPrice(parseInt(item.price.replace(/[^0-9]/g, '')) * item.quantity)}
-                        </span>
-                      </div>
-                    ))}
+                    {cart.map((item) => {
+                      const unit = typeof item.priceNumber === 'number'
+                        ? item.priceNumber
+                        : parseInt(String(item.price).replace(/[^0-9]/g, ''), 10) || 0;
+                      return (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span className="text-stone-600">
+                            {item.quantity}x {item.name}
+                          </span>
+                          <span className="font-medium text-stone-900">
+                            UGX {formatPrice(unit * item.quantity)}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div className="border-t border-stone-200 pt-4 space-y-3 mb-6">

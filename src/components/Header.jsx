@@ -1,28 +1,49 @@
 
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, UtensilsCrossed, ShoppingCart } from 'lucide-react';
+import { Menu, X, UtensilsCrossed, ShoppingCart, User, LogOut, ClipboardList, LayoutDashboard, BedDouble } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
 
 const Header = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const { getCartCount } = useCart();
+  const { user, isStaff, logout } = useAuth();
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    setIsUserMenuOpen(false);
+    setIsMobileMenuOpen(false);
+    navigate('/');
+  };
+
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Menu', path: '/menu' },
+    { name: 'Rooms', path: '/booking' },
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' }
   ];
@@ -67,7 +88,7 @@ const Header = () => {
           </nav>
 
           {/* Desktop CTA Buttons */}
-          <div className="hidden md:flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-3">
             <Link to="/cart">
               <Button variant="ghost" className="text-orange-100 hover:text-white hover:bg-white/10 relative">
                 <ShoppingCart size={20} />
@@ -78,11 +99,60 @@ const Header = () => {
                 )}
               </Button>
             </Link>
-            <Link to="/menu">
-              <Button variant="ghost" className="text-orange-100 hover:text-white hover:bg-white/10">
-                Order Online
-              </Button>
-            </Link>
+
+            {user ? (
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-orange-50 transition"
+                >
+                  <div className="w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center text-sm font-bold">
+                    {user.full_name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <span className="text-sm font-medium max-w-[100px] truncate">{user.full_name?.split(' ')[0]}</span>
+                </button>
+                <AnimatePresence>
+                  {isUserMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl py-2 text-stone-800"
+                    >
+                      <div className="px-4 py-2 border-b border-stone-100">
+                        <p className="font-semibold text-sm truncate">{user.full_name}</p>
+                        <p className="text-xs text-stone-500 truncate">{user.email}</p>
+                      </div>
+                      {isStaff && (
+                        <Link to="/admin" onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-orange-50">
+                          <LayoutDashboard size={16} />Admin Dashboard
+                        </Link>
+                      )}
+                      <Link to="/orders" onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-orange-50">
+                        <ClipboardList size={16} />My Orders
+                      </Link>
+                      <Link to="/my-bookings" onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-orange-50">
+                        <BedDouble size={16} />My Bookings
+                      </Link>
+                      <button onClick={handleLogout}
+                        className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm hover:bg-red-50 text-red-600">
+                        <LogOut size={16} />Logout
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <Link to="/login">
+                <Button variant="ghost" className="text-orange-100 hover:text-white hover:bg-white/10">
+                  <User size={16} className="mr-1" />Login
+                </Button>
+              </Link>
+            )}
+
             <Link to="/reservation">
               <Button className="bg-orange-600 hover:bg-orange-700 text-white rounded-full px-6 shadow-lg shadow-orange-900/20">
                 Reserve Table
@@ -145,6 +215,42 @@ const Header = () => {
                     </Button>
                   </Link>
                 </div>
+                {user ? (
+                  <div className="mt-3 border-t border-white/10 pt-3 space-y-1">
+                    <p className="px-4 text-sm text-orange-300">Hi, {user.full_name}</p>
+                    {isStaff && (
+                      <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-orange-100 hover:bg-white/5 rounded-lg">
+                        <LayoutDashboard size={16} />Admin Dashboard
+                      </Link>
+                    )}
+                    <Link to="/orders" onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2 text-orange-100 hover:bg-white/5 rounded-lg">
+                      <ClipboardList size={16} />My Orders
+                    </Link>
+                    <Link to="/my-bookings" onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2 text-orange-100 hover:bg-white/5 rounded-lg">
+                      <BedDouble size={16} />My Bookings
+                    </Link>
+                    <button onClick={handleLogout}
+                      className="w-full text-left flex items-center gap-2 px-4 py-2 text-red-400 hover:bg-white/5 rounded-lg">
+                      <LogOut size={16} />Logout
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 mt-3 border-t border-white/10 pt-3">
+                    <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full border-orange-500/30 text-orange-100 hover:bg-orange-500/20">
+                        Login
+                      </Button>
+                    </Link>
+                    <Link to="/register" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white">
+                        Sign Up
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </nav>
             </motion.div>
           )}
